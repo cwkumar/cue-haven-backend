@@ -11,6 +11,7 @@ from api.admin import auth_router, admin_router
 from api.inventory import router as inventory_router
 from api.admin_management import router as admin_management_router
 from api.table_sessions import router as table_sessions_router
+from api.setup import router as setup_router
 
 # Tables are created by create_tables.py script before server starts (see Procfile)
 # Base.metadata.create_all(bind=engine)  # Commented out - handled by create_tables.py
@@ -36,6 +37,7 @@ app.include_router(admin_router)
 app.include_router(inventory_router)
 app.include_router(admin_management_router, prefix="/api/admin-management", tags=["admin-management"])
 app.include_router(table_sessions_router, prefix="/api/table-sessions", tags=["table-sessions"])
+app.include_router(setup_router, prefix="/api/setup", tags=["setup"])
 
 # Pydantic models for other features
 class TableBooking(BaseModel):
@@ -62,7 +64,18 @@ tournaments: List[Tournament] = []
 
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to Cue Haven API"}
+    return {
+        "message": "Welcome to Cue Haven API",
+        "version": "1.0.0",
+        "status": "running",
+        "setup_endpoints": {
+            "health": "/health",
+            "setup_status": "/api/setup/status", 
+            "create_tables": "/api/setup/create-tables",
+            "create_admin": "/api/setup/create-admin",
+            "full_setup": "/api/setup/full-setup"
+        }
+    }
 
 @app.get("/health")
 def health_check():
