@@ -12,8 +12,8 @@ from api.inventory import router as inventory_router
 from api.admin_management import router as admin_management_router
 from api.table_sessions import router as table_sessions_router
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+# Tables are created by create_tables.py script before server starts (see Procfile)
+# Base.metadata.create_all(bind=engine)  # Commented out - handled by create_tables.py
 
 app = FastAPI(
     title="Cue Haven API",
