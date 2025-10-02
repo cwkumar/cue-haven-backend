@@ -1,1 +1,1 @@
-web: uvicorn main:app --host 0.0.0.0 --port $PORT
+web: python create_tables.py && uvicorn main:app --host 0.0.0.0 --port $PORT
