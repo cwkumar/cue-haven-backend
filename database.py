@@ -9,8 +9,13 @@ load_dotenv()
 # Database URL - Railway will provide DATABASE_URL environment variable
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# If no DATABASE_URL is provided, use a fallback for local development
-if not DATABASE_URL:
+# Debug: Print whether DATABASE_URL is found
+if DATABASE_URL:
+    print("✅ DATABASE_URL found in environment variables")
+    print(f"📍 Connecting to: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'database'}")
+else:
+    print("⚠️  WARNING: DATABASE_URL not found! Using fallback localhost database.")
+    print("⚠️  This will fail on Railway. Please set DATABASE_URL environment variable.")
     DATABASE_URL = "postgresql://postgres:password@localhost:5432/cuehaven"
 
 # Railway provides DATABASE_URL in a format that needs to be updated for SQLAlchemy 2.0
