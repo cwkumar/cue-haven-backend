@@ -1,14 +1,43 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, engine, Base
+from sqlalchemy import create_engine
+from database import get_db, Base
 from models.admin import Admin
 from passlib.context import CryptContext
-import hashlib
+import os
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-@router.post("/setup/create-tables")
+def get_railway_engine():
+    """
+    Get SQLAlchemy engine with Railway database configuration.
+    This rebuilds the connection each time to ensure fresh environment variables.
+    """
+    # Build DATABASE_URL from Railway's individual environment variables
+    postgres_user = os.environ.get("POSTGRES_USER")
+    postgres_password = os.environ.get("POSTGRES_PASSWORD") 
+    pghost = os.environ.get("PGHOST") or os.environ.get("RAILWAY_PRIVATE_DOMAIN")
+    pgport = os.environ.get("PGPORT", "5432")
+    postgres_db = os.environ.get("POSTGRES_DB") or os.environ.get("PGDATABASE", "railway")
+    
+    print(f"🔍 Railway DB Connection Debug:")
+    print(f"   POSTGRES_USER: {postgres_user}")
+    print(f"   POSTGRES_PASSWORD: {'***' if postgres_password else 'NOT SET'}")
+    print(f"   PGHOST: {pghost}")
+    print(f"   PGPORT: {pgport}")
+    print(f"   POSTGRES_DB: {postgres_db}")
+    
+    if all([postgres_user, postgres_password, pghost, postgres_db]):
+        database_url = f"postgresql://{postgres_user}:{postgres_password}@{pghost}:{pgport}/{postgres_db}"
+        print(f"✅ Built DATABASE_URL successfully")
+        return create_engine(database_url)
+    else:
+        print("❌ Missing Railway database environment variables")
+        # Fallback for local development
+        return create_engine("postgresql://postgres:password@localhost:5432/cuehaven")
+
+@router.post("/create-tables")
 def create_tables():
     """
     Create all database tables.
@@ -16,6 +45,9 @@ def create_tables():
     """
     try:
         print("🔄 Creating database tables...")
+        
+        # Get Railway engine with fresh environment variables
+        engine = get_railway_engine()
         
         # Import all models to ensure they are registered with Base
         from models import admin, table_session, inventory_item
@@ -83,6 +115,10 @@ def full_setup(db: Session = Depends(get_db)):
     try:
         # Step 1: Create tables
         print("🔄 Step 1: Creating database tables...")
+        
+        # Get Railway engine with fresh environment variables
+        engine = get_railway_engine()
+        
         from models import admin, table_session, inventory_item
         Base.metadata.create_all(bind=engine)
         print("✅ Tables created!")
