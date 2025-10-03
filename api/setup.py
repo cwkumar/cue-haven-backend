@@ -18,9 +18,23 @@ def get_railway_engine():
     
     # Method 1: Check if DATABASE_URL is properly set (not containing templates)
     database_url = os.environ.get("DATABASE_URL")
-    if database_url and not ("${{" in database_url) and database_url.startswith("postgresql://"):
-        print(f"✅ Using DATABASE_URL directly")
-        return create_engine(database_url)
+    print(f"📋 Raw DATABASE_URL: {database_url}")
+    
+    # Check if DATABASE_URL contains unresolved template variables
+    if database_url and ("${{" in database_url or "port" in database_url.split(":")[-1]):
+        print("⚠️  DATABASE_URL contains unresolved templates, ignoring...")
+        database_url = None
+    
+    if database_url and database_url.startswith("postgresql://"):
+        try:
+            # Test if the URL is valid by trying to parse it
+            from sqlalchemy.engine.url import make_url
+            make_url(database_url)  # This will raise an error if URL is invalid
+            print(f"✅ Using DATABASE_URL directly")
+            return create_engine(database_url)
+        except Exception as e:
+            print(f"⚠️  DATABASE_URL is invalid: {e}")
+            database_url = None
     
     # Method 2: Build DATABASE_URL from Railway's individual environment variables
     postgres_user = os.environ.get("POSTGRES_USER")
@@ -36,12 +50,30 @@ def get_railway_engine():
     print(f"   RAILWAY_PRIVATE_DOMAIN: {os.environ.get('RAILWAY_PRIVATE_DOMAIN') or 'NOT SET'}")
     print(f"   PGPORT: {pgport}")
     print(f"   POSTGRES_DB: {postgres_db or 'NOT SET'}")
-    print(f"   DATABASE_URL: {database_url[:50] + '...' if database_url else 'NOT SET'}")
+    
+    # Validate port is numeric
+    try:
+        port_num = int(pgport)
+        if port_num <= 0 or port_num > 65535:
+            raise ValueError(f"Invalid port number: {port_num}")
+    except ValueError as e:
+        print(f"❌ Invalid port '{pgport}': {e}")
+        pgport = "5432"  # Default PostgreSQL port
+        print(f"🔄 Using default port: {pgport}")
     
     if all([postgres_user, postgres_password, pghost, postgres_db]):
-        database_url = f"postgresql://{postgres_user}:{postgres_password}@{pghost}:{pgport}/{postgres_db}"
-        print(f"✅ Built DATABASE_URL from individual variables")
-        return create_engine(database_url)
+        try:
+            database_url = f"postgresql://{postgres_user}:{postgres_password}@{pghost}:{pgport}/{postgres_db}"
+            print(f"✅ Built DATABASE_URL from individual variables")
+            
+            # Test the constructed URL
+            from sqlalchemy.engine.url import make_url
+            make_url(database_url)  # Validate URL format
+            
+            return create_engine(database_url)
+        except Exception as e:
+            print(f"❌ Error creating engine with built URL: {e}")
+            raise Exception(f"Failed to create database engine: {e}")
     else:
         print("❌ Missing required Railway database environment variables")
         print("🔧 Available environment variables:")
@@ -51,8 +83,18 @@ def get_railway_engine():
                 safe_value = value[:20] + "..." if len(value) > 20 else value
                 print(f"     {key}: {safe_value}")
         
-        # This will fail but provides clear error message
-        raise Exception("Cannot build database connection - missing Railway environment variables. Check Railway database setup.")
+        # Provide specific guidance based on what's missing
+        missing = []
+        if not postgres_user:
+            missing.append("POSTGRES_USER")
+        if not postgres_password:
+            missing.append("POSTGRES_PASSWORD")
+        if not pghost:
+            missing.append("PGHOST or RAILWAY_PRIVATE_DOMAIN")
+        if not postgres_db:
+            missing.append("POSTGRES_DB")
+            
+        raise Exception(f"Cannot build database connection - missing: {', '.join(missing)}. Railway database must be connected to your backend service.")
         
         # Fallback for local development (commented out for Railway)
         # return create_engine("postgresql://postgres:password@localhost:5432/cuehaven")
