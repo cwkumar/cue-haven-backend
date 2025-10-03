@@ -14,7 +14,15 @@ def get_railway_engine():
     Get SQLAlchemy engine with Railway database configuration.
     This rebuilds the connection each time to ensure fresh environment variables.
     """
-    # Build DATABASE_URL from Railway's individual environment variables
+    print("🔍 Getting Railway database engine...")
+    
+    # Method 1: Check if DATABASE_URL is properly set (not containing templates)
+    database_url = os.environ.get("DATABASE_URL")
+    if database_url and not ("${{" in database_url) and database_url.startswith("postgresql://"):
+        print(f"✅ Using DATABASE_URL directly")
+        return create_engine(database_url)
+    
+    # Method 2: Build DATABASE_URL from Railway's individual environment variables
     postgres_user = os.environ.get("POSTGRES_USER")
     postgres_password = os.environ.get("POSTGRES_PASSWORD") 
     pghost = os.environ.get("PGHOST") or os.environ.get("RAILWAY_PRIVATE_DOMAIN")
@@ -22,20 +30,72 @@ def get_railway_engine():
     postgres_db = os.environ.get("POSTGRES_DB") or os.environ.get("PGDATABASE", "railway")
     
     print(f"🔍 Railway DB Connection Debug:")
-    print(f"   POSTGRES_USER: {postgres_user}")
+    print(f"   POSTGRES_USER: {postgres_user or 'NOT SET'}")
     print(f"   POSTGRES_PASSWORD: {'***' if postgres_password else 'NOT SET'}")
-    print(f"   PGHOST: {pghost}")
+    print(f"   PGHOST: {pghost or 'NOT SET'}")
+    print(f"   RAILWAY_PRIVATE_DOMAIN: {os.environ.get('RAILWAY_PRIVATE_DOMAIN') or 'NOT SET'}")
     print(f"   PGPORT: {pgport}")
-    print(f"   POSTGRES_DB: {postgres_db}")
+    print(f"   POSTGRES_DB: {postgres_db or 'NOT SET'}")
+    print(f"   DATABASE_URL: {database_url[:50] + '...' if database_url else 'NOT SET'}")
     
     if all([postgres_user, postgres_password, pghost, postgres_db]):
         database_url = f"postgresql://{postgres_user}:{postgres_password}@{pghost}:{pgport}/{postgres_db}"
-        print(f"✅ Built DATABASE_URL successfully")
+        print(f"✅ Built DATABASE_URL from individual variables")
         return create_engine(database_url)
     else:
-        print("❌ Missing Railway database environment variables")
-        # Fallback for local development
-        return create_engine("postgresql://postgres:password@localhost:5432/cuehaven")
+        print("❌ Missing required Railway database environment variables")
+        print("🔧 Available environment variables:")
+        for key in sorted(os.environ.keys()):
+            if any(term in key.upper() for term in ['DATABASE', 'POSTGRES', 'PG', 'RAILWAY']):
+                value = os.environ[key]
+                safe_value = value[:20] + "..." if len(value) > 20 else value
+                print(f"     {key}: {safe_value}")
+        
+        # This will fail but provides clear error message
+        raise Exception("Cannot build database connection - missing Railway environment variables. Check Railway database setup.")
+        
+        # Fallback for local development (commented out for Railway)
+        # return create_engine("postgresql://postgres:password@localhost:5432/cuehaven")
+
+@router.get("/debug-env")
+def debug_environment():
+    """
+    Debug endpoint to see all available environment variables.
+    This helps troubleshoot Railway database connection issues.
+    """
+    env_vars = {}
+    
+    # Collect all environment variables that might be related to database
+    for key, value in os.environ.items():
+        if any(term in key.upper() for term in ['DATABASE', 'POSTGRES', 'PG', 'DB', 'RAILWAY']):
+            # Hide sensitive data but show structure
+            if 'PASSWORD' in key.upper():
+                safe_value = value[:3] + "***" + value[-3:] if len(value) > 6 else "***"
+            else:
+                safe_value = value
+            env_vars[key] = safe_value
+    
+    # Check specific variables we need
+    db_vars = {
+        "POSTGRES_USER": os.environ.get("POSTGRES_USER"),
+        "POSTGRES_PASSWORD": "***" if os.environ.get("POSTGRES_PASSWORD") else None,
+        "POSTGRES_DB": os.environ.get("POSTGRES_DB"),
+        "PGHOST": os.environ.get("PGHOST"),
+        "RAILWAY_PRIVATE_DOMAIN": os.environ.get("RAILWAY_PRIVATE_DOMAIN"),
+        "PGPORT": os.environ.get("PGPORT"),
+        "DATABASE_URL": "SET" if os.environ.get("DATABASE_URL") else None
+    }
+    
+    return {
+        "all_db_related_vars": env_vars,
+        "required_variables": db_vars,
+        "can_build_url": all([
+            os.environ.get("POSTGRES_USER"),
+            os.environ.get("POSTGRES_PASSWORD"), 
+            os.environ.get("PGHOST") or os.environ.get("RAILWAY_PRIVATE_DOMAIN"),
+            os.environ.get("POSTGRES_DB")
+        ])
+    }
 
 @router.post("/create-tables")
 def create_tables():
